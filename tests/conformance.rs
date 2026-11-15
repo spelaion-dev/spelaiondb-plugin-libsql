@@ -1,28 +1,34 @@
 //! The conformance set of SpelaionDB's plugin protocol, run against this plugin's own program
 //! (ADR-042): it starts, speaks the protocol's version, opens sessions, returns results in the
 //! order the contract says, fails without hanging, obeys a cancel while a statement runs and
-//! ends when its input closes. What the engine's types look like is the engine's own tests.
+//! ends when its input closes. What the engine's types look like is `tests/libsql.rs`. It
+//! needs `SPELAION_TEST_LIBSQL` (`ci/services.sh`); without it the test is skipped, saying so.
 
 use spelaion_driver_api::ConnectParams;
 use spelaion_plugin_host::conformance::{Target, assert_conforms};
 
-const PROGRAM: &str = env!("CARGO_BIN_EXE_spelaiondb-plugin-example");
+const PROGRAM: &str = env!("CARGO_BIN_EXE_spelaiondb-plugin-libsql");
 
 #[tokio::test]
 async fn the_plugin_conforms() {
+    let Ok(addr) = std::env::var("SPELAION_TEST_LIBSQL") else {
+        eprintln!("SPELAION_TEST_LIBSQL not set: test skipped");
+        return;
+    };
+    let (host, port) = addr.rsplit_once(':').expect("host:port");
     let target = Target {
         program: PROGRAM.into(),
-        engine: "example".into(),
-        // A plugin of a server reads where it is from the environment, as SpelaionDB's own
-        // tests do, and skips this test (saying so) when it is not set.
+        engine: "libsql".into(),
         params: ConnectParams {
-            database: "main".into(),
+            host: host.into(),
+            port: port.parse().expect("port"),
+            tls: spelaion_driver_api::TlsMode::Disable,
             ..Default::default()
         },
         one_row: "select 1".into(),
         refused: "select * from a_table_that_is_not_there".into(),
-        // A statement that runs until it is cancelled; `None` for an engine that cannot cancel.
-        slow: Some("wait".into()),
+        // libSQL cannot cancel a statement (closing the request would not stop it).
+        slow: None,
     };
     assert_conforms(&target).await;
 }
