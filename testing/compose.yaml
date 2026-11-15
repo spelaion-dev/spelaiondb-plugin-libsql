@@ -1,0 +1,30 @@
+# The tests' servers, libSQL's own image (sqld):
+#   18091  a server without authentication
+#   18092  a server that checks tokens (keys/jwt.pub; keys/token.jwt is one it accepts)
+#   18493  the first one behind TLS (a certificate for libsql.spelaion.test signed by
+#          keys/ca.crt): sqld serves plain HTTP, and Turso's TLS is in front of it too
+name: spelaion-plugin-libsql
+
+services:
+  libsql:
+    image: ghcr.io/tursodatabase/libsql-server:v0.24.33
+    ports:
+      - "127.0.0.1:18091:8080"
+
+  libsql-auth:
+    image: ghcr.io/tursodatabase/libsql-server:v0.24.33
+    environment:
+      SQLD_AUTH_JWT_KEY_FILE: /keys/jwt.pub
+    ports:
+      - "127.0.0.1:18092:8080"
+    volumes:
+      - ./keys/jwt.pub:/keys/jwt.pub:ro
+
+  tls:
+    image: haproxy:3.2-alpine
+    depends_on: [libsql]
+    ports:
+      - "127.0.0.1:18493:8443"
+    volumes:
+      - ./tls/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./keys/server.pem:/usr/local/etc/haproxy/server.pem:ro
